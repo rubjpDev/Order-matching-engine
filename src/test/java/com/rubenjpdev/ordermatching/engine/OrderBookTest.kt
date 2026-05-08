@@ -1,32 +1,20 @@
-package main.java.com.rubenjpdev.orderbook.engine
+package main.java.com.rubenjpdev.ordermatching.engine
 
-import main.java.com.rubenjpdev.orderbook.model.Order
-import main.java.com.rubenjpdev.orderbook.model.Price
-import main.java.com.rubenjpdev.orderbook.model.Quantity
-import main.java.com.rubenjpdev.orderbook.model.Side
+import main.java.com.rubenjpdev.ordermatching.model.Order
+import main.java.com.rubenjpdev.ordermatching.model.Price
+import main.java.com.rubenjpdev.ordermatching.model.Quantity
+import main.java.com.rubenjpdev.ordermatching.model.Side
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
-/**
- * State-Based unit tests for [OrderBook].
- * Zero mocks — all assertions target observable state after each operation.
- *
- * Test taxonomy:
- *  1. Passive order placement
- *  2. Price-Time (FIFO) priority
- *  3. Full Fill matching
- *  4. Partial Fill matching
- *  5. Price-level pruning (TreeMap node removal)
- *  6. Cancellation — O(1) path via orderMap
- *  7. Spread / best-price correctness
- */
+// OrderBook tests grouped by behaviour.
 @DisplayName("OrderBook")
 class OrderBookTest {
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    // Helpers
 
     private lateinit var book: OrderBook
 
@@ -41,9 +29,7 @@ class OrderBookTest {
         book = OrderBook("AAPL")
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 1. Passive order placement
-    // ─────────────────────────────────────────────────────────────────────────
+
     @Nested
     @DisplayName("Passive order placement")
     inner class PassivePlacement {
@@ -77,7 +63,6 @@ class OrderBookTest {
             book.addOrder(ask(id = 2, priceCents = 101, qty = 30))
 
             assertEquals(80L, book.asks[101L]!!.totalVolume.value)
-            // Only one price-level node in the tree
             assertEquals(1, book.asks.size)
         }
 
@@ -89,9 +74,7 @@ class OrderBookTest {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 2. Price-Time (FIFO) priority
-    // ─────────────────────────────────────────────────────────────────────────
+
     @Nested
     @DisplayName("Price-Time priority (FIFO)")
     inner class PriceTimePriority {
@@ -99,23 +82,21 @@ class OrderBookTest {
         @Test
         @DisplayName("Within the same price level, earlier orders fill first")
         fun `fifo order within same price level`() {
-            // Two asks at the same price — #1 arrived first
+            // Two asks at the same price: #1 arrived first
             book.addOrder(ask(id = 1, priceCents = 100, qty = 10, ts = 1))
             book.addOrder(ask(id = 2, priceCents = 100, qty = 10, ts = 2))
 
-            // Aggressive BID — enough to consume just the first ask
             val trades = book.process(bid(id = 3, priceCents = 100, qty = 10))
 
             assertEquals(1, trades.size)
-            assertEquals(1L, trades[0].sellOrderId, "Order #1 (earliest) must fill first")
-            // Order #2 must remain
+            assertEquals(1L, trades[0].sellOrderId, "Order #1 (the oldest) must fill first")
             assertEquals(10L, book.asks[100L]!!.totalVolume.value)
         }
 
         @Test
         @DisplayName("Better-priced ask is always matched before a worse one")
         fun `best price wins over worse price across levels`() {
-            // Two ask levels: 100 is better (cheaper) than 101
+            // Level 100 is a better price than 101 for the buyer
             book.addOrder(ask(id = 1, priceCents = 101, qty = 50))
             book.addOrder(ask(id = 2, priceCents = 100, qty = 50))
 
@@ -133,7 +114,7 @@ class OrderBookTest {
             book.addOrder(ask(id = 2, priceCents = 101, qty = 20))
             book.addOrder(ask(id = 3, priceCents = 102, qty = 20))
 
-            // Buy 50 at market — should sweep 100 (fully), 101 (fully), partial 102
+            // Buy 50 at market: sweeps level 100 fully, 101 fully, then 10 from 102
             val trades = book.process(bid(id = 4, priceCents = 102, qty = 50))
 
             assertEquals(3, trades.size)
@@ -143,10 +124,6 @@ class OrderBookTest {
             assertEquals(10L, trades[2].executedQuantity.value, "Only 10 of the 20 at 102 consumed")
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 3. Full Fill matching
-    // ─────────────────────────────────────────────────────────────────────────
     @Nested
     @DisplayName("Full Fill")
     inner class FullFill {
@@ -161,7 +138,6 @@ class OrderBookTest {
             assertEquals(1, trades.size)
             assertEquals(50L, trades[0].executedQuantity.value)
             assertEquals(100L, trades[0].executionPrice.value)
-            // Level must be pruned from the tree
             assertNull(book.asks[100L], "Price level must be removed when volume reaches zero")
             assertTrue(book.asks.isEmpty())
         }
@@ -189,8 +165,7 @@ class OrderBookTest {
 
             book.process(bid(id = 2, priceCents = 100, qty = 40))
 
-            // Cancelling a consumed order must return false (not in map)
-            assertFalse(book.cancelOrder(1L), "Fully-filled order must no longer be in orderMap")
+            assertFalse(book.cancelOrder(1L), "A fully-filled order must no longer be in the map")
         }
 
         @Test
@@ -200,15 +175,10 @@ class OrderBookTest {
 
             book.process(bid(id = 2, priceCents = 100, qty = 50))
 
-            // The aggressive BID (id=2) consumed everything — must not appear in bids tree
-            assertNull(book.bids[100L], "Fully-matched incoming order must not be parked")
+            assertNull(book.bids[100L], "A fully-matched incoming order must not be parked")
             assertTrue(book.bids.isEmpty())
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 4. Partial Fill matching
-    // ─────────────────────────────────────────────────────────────────────────
     @Nested
     @DisplayName("Partial Fill")
     inner class PartialFill {
@@ -218,14 +188,12 @@ class OrderBookTest {
         fun `aggressive partial fill parks residual on correct side`() {
             book.addOrder(ask(id = 1, priceCents = 100, qty = 50))
 
-            // Buy 30 — only 30 of the 50-lot ask is consumed
             val trades = book.process(bid(id = 2, priceCents = 100, qty = 30))
 
             assertEquals(1, trades.size)
             assertEquals(30L, trades[0].executedQuantity.value)
 
-            // Ask #1 must survive with 20 remaining
-            assertNotNull(book.asks[100L], "Partially filled ask level must remain")
+            assertNotNull(book.asks[100L], "Ask level must remain with 20 units pending")
             assertEquals(20L, book.asks[100L]!!.totalVolume.value)
         }
 
@@ -234,7 +202,7 @@ class OrderBookTest {
         fun `over-sized aggressive order parks residual as passive`() {
             book.addOrder(ask(id = 1, priceCents = 100, qty = 30))
 
-            // Buy 50 — 30 matches, 20 left over — must park as BID @ 100
+            // Buy 50: fills 30, remaining 20 parks as a passive BID
             val trades = book.process(bid(id = 2, priceCents = 100, qty = 50))
 
             assertEquals(1, trades.size)
@@ -261,14 +229,10 @@ class OrderBookTest {
 
             book.process(bid(id = 2, priceCents = 100, qty = 50))
 
-            // The passive (ask #1) is still cancellable — meaning it remains in orderMap
-            assertTrue(book.cancelOrder(1L), "Partially-filled order must still be in orderMap and cancellable")
+            // The partially-filled order is still live and must be cancellable
+            assertTrue(book.cancelOrder(1L), "Partially-filled order must still be in the map and cancellable")
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 5. Price-level pruning (TreeMap node removal)
-    // ─────────────────────────────────────────────────────────────────────────
     @Nested
     @DisplayName("Price-level pruning")
     inner class PriceLevelPruning {
@@ -320,10 +284,6 @@ class OrderBookTest {
             assertEquals(101L, book.getBestAsk(), "Best ask must now be 101 after 100 is consumed")
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 6. Cancellation — orderMap path
-    // ─────────────────────────────────────────────────────────────────────────
     @Nested
     @DisplayName("Order cancellation")
     inner class Cancellation {
@@ -363,7 +323,6 @@ class OrderBookTest {
 
             book.cancelOrder(5L)
 
-            // If the order were still in the map, this would return true
             assertFalse(book.cancelOrder(5L))
         }
 
@@ -378,10 +337,6 @@ class OrderBookTest {
             assertEquals(40L, book.bids[99L]!!.totalVolume.value)
         }
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 7. Spread / best-price correctness
-    // ─────────────────────────────────────────────────────────────────────────
     @Nested
     @DisplayName("Spread and best price")
     inner class Spread {
@@ -422,7 +377,7 @@ class OrderBookTest {
         fun `crossing order updates spread via residual parking`() {
             book.addOrder(ask(id = 1, priceCents = 101, qty = 30))
 
-            // Buy 50 @ 101 — 30 matches, 20 parks as BID @ 101
+            // Buy 50 @ 101: fills 30, remaining 20 parks as BID
             book.process(bid(id = 2, priceCents = 101, qty = 50))
 
             assertNull(book.getBestAsk(), "Ask side must be empty")
