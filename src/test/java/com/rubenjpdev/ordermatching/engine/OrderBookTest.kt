@@ -247,7 +247,7 @@ class OrderBookTest {
 
             assertNull(book.asks[101L], "Level 101 must be pruned")
             assertNotNull(book.asks[102L], "Level 102 must still exist")
-            assertEquals(101L, book.asks.size.toLong().also { assertEquals(1L, it) }.let { 102L })
+            assertEquals(1, book.asks.size, "Only level 102 must remain")
         }
 
         @Test
