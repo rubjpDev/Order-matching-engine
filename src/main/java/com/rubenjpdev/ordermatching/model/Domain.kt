@@ -1,11 +1,11 @@
-package main.java.com.rubenjpdev.orderbook.model
+package main.java.com.rubenjpdev.ordermatching.model
 
 enum class Side {BID,ASK}
 
 @JvmInline
-value class Price(val value: Long) //done to bypass boxing ang get primitive performance
+value class Price(val value: Long) // avoids boxing, gets primitive performance
 @JvmInline
-value class Quantity(val value: Long)//idem
+value class Quantity(val value: Long) // idem
 
 data class Order(
     val id: Long,

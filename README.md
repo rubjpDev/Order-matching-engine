@@ -1,4 +1,4 @@
-# 📒 Order Book Kata
+# order-matching-engine
 
 > *How does an order matching engine actually work inside? What data structures make matching fast? This mini-project is my way of answering those questions by writing code.*
 
@@ -107,7 +107,7 @@ val trades = book.process(
 ## 📁 Project structure
 
 ```
-src/main/java/com/rubenjpdev/orderbook/
+src/main/java/com/rubenjpdev/ordermatching/
 ├── model/
 │   └── Domain.kt        # Side, Price, Quantity, Order, Trade
 ├── engine/
